@@ -2,6 +2,8 @@
 set -e
 
 source circuit.env
+
+SAMPLE_SIZE=20
 TIME=(/usr/bin/time -f "mem %M\ntime %e\ncpu %P")
 RS_PATH=/home/okxdex/data/zkdex-pap/services/rapidsnark
 prover=${RS_PATH}/build_prover/src/prover
@@ -32,32 +34,34 @@ avg_time() {
 }
 
 function SnarkJS() {
-  avg_time 10 snarkjs groth16 prove "$BUILD_DIR"/"$CIRCUIT_NAME".zkey "$BUILD_DIR"/witness.wtns "$BUILD_DIR"/proof.json "$BUILD_DIR"/public.json
+  avg_time $SAMPLE_SIZE snarkjs groth16 prove "$BUILD_DIR"/"$CIRCUIT_NAME".zkey "$BUILD_DIR"/witness.wtns "$BUILD_DIR"/proof.json "$BUILD_DIR"/public.json
   proof_size=$(ls -lh "$BUILD_DIR"/proof.json | awk '{print $5}')
   echo "Proof size: $proof_size"
 }
 
 function RapidStandalone() {
-  avg_time 10 ${prover} "$BUILD_DIR"/"$CIRCUIT_NAME".zkey "$BUILD_DIR"/witness.wtns "$BUILD_DIR"/proof.json "$BUILD_DIR"/public.json
+  avg_time $SAMPLE_SIZE ${prover} "$BUILD_DIR"/"$CIRCUIT_NAME".zkey "$BUILD_DIR"/witness.wtns "$BUILD_DIR"/proof.json "$BUILD_DIR"/public.json
 }
 
 function GPURapidStandalone() {
-  avg_time 10 ${GPUProver} "$BUILD_DIR"/"$CIRCUIT_NAME".zkey "$BUILD_DIR"/witness.wtns "$BUILD_DIR"/proof.json "$BUILD_DIR"/public.json
+  avg_time $SAMPLE_SIZE ${GPUProver} "$BUILD_DIR"/"$CIRCUIT_NAME".zkey "$BUILD_DIR"/witness.wtns "$BUILD_DIR"/proof.json "$BUILD_DIR"/public.json
 }
 
 function RapidServer() {
-  pushd "$BUILD_DIR"
+  pushd "$BUILD_DIR" > /dev/null
   mkdir -p build
 
-  pushd "$CIRCUIT_NAME"_cpp/
+  pushd "$CIRCUIT_NAME"_cpp/ > /dev/null
   make -j12
   cp "$CIRCUIT_NAME" ../build/
-  popd
+  popd > /dev/null
 
   # Copy witness and input
   cp witness.wtns ./build/"$CIRCUIT_NAME".wtns
   cp input.json ./build/input_"$CIRCUIT_NAME".json
 
+  # Kill the proverServer if it is running on 9080 port
+  kill -9 $(lsof -t -i:9080) > /dev/null 2>&1 || true
   # Start the prover server in the background
   ${proverServer} 9080 "$CIRCUIT_NAME".zkey > /dev/null 2>&1 &
 
@@ -65,27 +69,30 @@ function RapidServer() {
   PROVER_SERVER_PID=$!
 
   # Give the server some time to start
-  sleep 5
+  sleep 1
 
-  for i in {1..10}
-  do
-    node ${REQ} ./build/input_$CIRCUIT_NAME.json $CIRCUIT_NAME > /dev/null 2>&1
-  done
+  avg_t=$(avg_time $SAMPLE_SIZE node ${REQ} ./build/input_$CIRCUIT_NAME.json $CIRCUIT_NAME | grep "time")
 
-  ps -p `pidof proverServer` -o %cpu,vsz | awk 'NR>1 {$2=int($2/1024)"M";}{ print;}'
+  ps_output=$(ps -p `pidof proverServer` -o %cpu,vsz --no-headers)
+  avg_cpu=$(echo $ps_output | awk '{print $1"%"}')
+  avg_mem=$(echo $ps_output | awk '{$2=int($2/1024)"M"; print $2}')
+
+  echo mem ${avg_mem}
+  echo ${avg_t}
+  echo cpu ${avg_cpu}
 
   # Kill the proverServer
   kill $PROVER_SERVER_PID
-  popd
+  popd > /dev/null
 }
 
+echo "Sample Size =" $SAMPLE_SIZE
 echo "========== GPU RapidSnark standalone prove  =========="
 GPURapidStandalone
 
 echo "========== RapidSnark standalone prove  =========="
 RapidStandalone
 
-echo "========== Should run proverServer in advance =========="
 echo "========== RapidSnark server prove  =========="
 RapidServer
 
