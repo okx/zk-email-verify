@@ -46,16 +46,20 @@ function GPURapidStandalone() {
 }
 
 function RapidServer() {
-  pushd "$BUILD_DIR"/"$CIRCUIT_NAME"_cpp/
+  pushd "$BUILD_DIR"
+  mkdir -p build
+
+  pushd "$CIRCUIT_NAME"_cpp/
   make -j12
-  cp "$CIRCUIT_NAME" ../
+  cp "$CIRCUIT_NAME" ../build/
   popd
 
-  # Copy witness
-  cp "$BUILD_DIR"/witness.wtns "$BUILD_DIR"/"$CIRCUIT_NAME".wtns
+  # Copy witness and input
+  cp witness.wtns ./build/"$CIRCUIT_NAME".wtns
+  cp input.json ./build/input_"$CIRCUIT_NAME".json
 
   # Start the prover server in the background
-  ${proverServer} 9080 "$BUILD_DIR"/"$CIRCUIT_NAME".zkey &
+  ${proverServer} 9080 "$CIRCUIT_NAME".zkey > /dev/null 2>&1 &
 
   # Save the PID of the proverServer to kill it later
   PROVER_SERVER_PID=$!
@@ -63,10 +67,16 @@ function RapidServer() {
   # Give the server some time to start
   sleep 5
 
-  avg_time 10 node ${REQ} "$BUILD_DIR"/input.json "$CIRCUIT_NAME"
+  for i in {1..10}
+  do
+    node ${REQ} ./build/input_$CIRCUIT_NAME.json $CIRCUIT_NAME > /dev/null 2>&1
+  done
+
+  ps -p `pidof proverServer` -o %cpu,vsz | awk 'NR>1 {$2=int($2/1024)"M";}{ print;}'
 
   # Kill the proverServer
-  # kill $PROVER_SERVER_PID
+  kill $PROVER_SERVER_PID
+  popd
 }
 
 echo "========== GPU RapidSnark standalone prove  =========="
@@ -75,9 +85,9 @@ GPURapidStandalone
 echo "========== RapidSnark standalone prove  =========="
 RapidStandalone
 
-# echo "========== Should run proverServer in advance =========="
-# echo "========== RapidSnark server prove  =========="
-# RapidServer
+echo "========== Should run proverServer in advance =========="
+echo "========== RapidSnark server prove  =========="
+RapidServer
 
 echo "========== SnarkJS prove  =========="
 SnarkJS
