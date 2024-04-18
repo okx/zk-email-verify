@@ -1,28 +1,31 @@
 #!/bin/bash
-set -e
-
+# set -e
 source circuit.env
 
-SAMPLE_SIZE=20
+SAMPLE_SIZE=1
+PROVER_NUM=32
 TIME=(/usr/bin/time -f "mem %M\ntime %e\ncpu %P")
+NODE=/home/okxdex/.nvm/versions/node/v21.6.2/bin/node
+SNARKJS=/home/okxdex/.nvm/versions/node/v21.6.2/bin/snarkjs
 RS_PATH=/home/okxdex/data/zkdex-pap/services/rapidsnark
 prover=${RS_PATH}/build_prover/src/prover
-proverServer=${RS_PATH}/build_nodejs/proverServer
+proverServer=${RS_PATH}/build_nodejs/proverServerSingleThread
 GPUProver=${RS_PATH}/build_prover_gpu/src/prover
 REQ=${RS_PATH}/tools/request.js
 export LD_LIBRARY_PATH=${RS_PATH}/depends/pistache/build/src
 
 avg_time() {
-    #
-    # usage: avg_time n command ...
-    #
-    n=$1; shift
-    (($# > 0)) || return                   # bail if no command given
-    echo "$@"
-    for ((i = 0; i < n; i++)); do
-        "${TIME[@]}" "$@" 2>&1
-        # | tee /dev/stderr
-    done | awk '
+  #
+  # usage: avg_time n command ...
+  #
+  n=$1
+  shift
+  (($# > 0)) || return # bail if no command given
+  echo "$@"
+  for ((i = 0; i < n; i++)); do
+    "${TIME[@]}" "$@" 2>&1
+    # | tee /dev/stderr
+  done | awk '
         /^mem [0-9]+/ { mem = mem + $2; nm++ }
         /^time [0-9]+\.[0-9]+/ { time = time + $2; nt++ }
         /^cpu [0-9]+%/  { cpu  = cpu  + substr($2,1,length($2)-1); nc++}
@@ -34,7 +37,7 @@ avg_time() {
 }
 
 function SnarkJS() {
-  avg_time $SAMPLE_SIZE snarkjs groth16 prove "$BUILD_DIR"/"$CIRCUIT_NAME".zkey "$BUILD_DIR"/witness.wtns "$BUILD_DIR"/proof.json "$BUILD_DIR"/public.json
+  avg_time $SAMPLE_SIZE $NODE $SNARKJS groth16 prove "$BUILD_DIR"/"$CIRCUIT_NAME".zkey "$BUILD_DIR"/witness.wtns "$BUILD_DIR"/proof.json "$BUILD_DIR"/public.json
   proof_size=$(ls -lh "$BUILD_DIR"/proof.json | awk '{print $5}')
   echo "Proof size: $proof_size"
 }
@@ -48,53 +51,93 @@ function GPURapidStandalone() {
 }
 
 function RapidServer() {
-  pushd "$BUILD_DIR" > /dev/null
+  pushd "$BUILD_DIR" >/dev/null
   mkdir -p build
 
-  pushd "$CIRCUIT_NAME"_cpp/ > /dev/null
+  pushd "$CIRCUIT_NAME"_cpp/ >/dev/null
   make -j12
   cp "$CIRCUIT_NAME" ../build/
-  popd > /dev/null
+  popd >/dev/null
 
   # Copy witness and input
   cp witness.wtns ./build/"$CIRCUIT_NAME".wtns
   cp input.json ./build/input_"$CIRCUIT_NAME".json
 
-  # Kill the proverServer if it is running on 9080 port
-  kill -9 $(lsof -t -i:9080) > /dev/null 2>&1 || true
-  # Start the prover server in the background
-  ${proverServer} 9080 "$CIRCUIT_NAME".zkey > /dev/null 2>&1 &
+  # Start many prover servers in the background
+  prover_pids=()
+  rm -r logs
+  mkdir -p logs
+  for ((i = 0; i < ${PROVER_NUM}; i++)); do
+    port=$((9000 + i))
+    # Kill the proverServer if it is running
+    kill -9 $(lsof -t -i:${port}) >/dev/null 2>&1 || true
 
-  # Save the PID of the proverServer to kill it later
-  PROVER_SERVER_PID=$!
+    ${proverServer} $port "$CIRCUIT_NAME".zkey >./logs/${port}.log 2>&1 &
+    # Save the PIDs of the prover servers to kill them later
+    prover_pids+=($!)
+  done
+  echo "Prover server PIDs: ${prover_pids[@]}"
 
-  # Give the server some time to start
-  sleep 1
+  # Give the servers some time to start
+  sleep 5
 
-  avg_t=$(avg_time $SAMPLE_SIZE node ${REQ} ./build/input_$CIRCUIT_NAME.json $CIRCUIT_NAME | grep "time")
+  # Start many requests to each prover server concurrently
+  start_time=$(date +%s)
+  req_pids=()
+  for ((i = 0; i < ${PROVER_NUM}; i++)); do
+    port=$((9000 + i))
+    $NODE ${REQ} ./build/input_$CIRCUIT_NAME.json $CIRCUIT_NAME $port >./logs/req-${i}.log 2>&1 &
+    req_pids+=($!)
+  done
+  echo "Request PIDs: ${req_pids[@]}"
+  for ((i = 0; i < ${PROVER_NUM}; i++)); do
+    wait ${req_pids[i]}
+  done
+  end_time=$(date +%s)
+  elapsed_time=$((end_time - start_time))
 
-  ps_output=$(ps -p `pidof proverServer` -o %cpu,vsz --no-headers)
-  avg_cpu=$(echo $ps_output | awk '{print $1"%"}')
-  avg_mem=$(echo $ps_output | awk '{$2=int($2/1024)"M"; print $2}')
+  for ((i = 0; i < ${PROVER_NUM}; i++)); do
+    port=$((9000 + i))
+    start_time=$(grep '\[TRACE\]: FullProver::thread_calculateProve start$' ./logs/${port}.log | awk '{print $4}')
+    end_time=$(grep '\[TRACE\]: FullProver::thread_calculateProve end$' ./logs/${port}.log | awk '{print $4}')
+    start_seconds=$(date -d"$start_time" +%s)
+    end_seconds=$(date -d"$end_time" +%s)
+    diff=$((end_seconds - start_seconds))
+    echo "Prover $i: ${diff}"
+  done
 
-  echo mem ${avg_mem}
-  echo ${avg_t}
-  echo cpu ${avg_cpu}
+  # for ((i = 0; i < ${PROVER_NUM}; i++)); do
+  #   ps_output=$(ps -p ${prover_pids[i]} -o %cpu,vsz,etimes --no-headers)
+  #   echo $ps_output
+  #   avg_cpu=$(echo $ps_output | awk '{print $1"%"}')
+  #   avg_mem=$(echo $ps_output | awk '{$2=int($2/1024)"M"; print $2}')
+  #   etime=$(echo $ps_output | awk '{print $3"s"}')
+  #   echo "mem ${avg_mem}"
+  #   echo "time ${etime}"
+  #   echo "cpu ${avg_cpu}"
 
-  # Kill the proverServer
-  kill $PROVER_SERVER_PID
-  popd > /dev/null
+  #   echo mem ${avg_mem}
+  #   echo time ${etime}
+  #   echo cpu ${avg_cpu}
+  # done
+
+  # Kill the prover servers
+  for pid in "${prover_pids[@]}"; do
+    kill $pid
+  done
+  popd >/dev/null
 }
 
 echo "Sample Size =" $SAMPLE_SIZE
-echo "========== GPU RapidSnark standalone prove  =========="
-GPURapidStandalone
+echo "Prover Number =" $PROVER_NUM
+# echo "========== GPU RapidSnark standalone prove  =========="
+# GPURapidStandalone
 
-echo "========== RapidSnark standalone prove  =========="
-RapidStandalone
+# echo "========== RapidSnark standalone prove  =========="
+# RapidStandalone
 
 echo "========== RapidSnark server prove  =========="
 RapidServer
 
-echo "========== SnarkJS prove  =========="
-SnarkJS
+# echo "========== SnarkJS prove  =========="
+# SnarkJS
