@@ -9,17 +9,17 @@ fi
 echo '****COMPILING CIRCUIT****'
 start=$(date +%s)
 set -x
-circom  -l ../node_modules -l ../../../node_modules "../$CIRCUIT_NAME".circom --r1cs --wasm --sym --c --wat --output "$BUILD_DIR"
+circom -l ../node_modules -l ../../../node_modules "../$CIRCUIT_NAME".circom --r1cs --wasm --sym --c --wat --output "$BUILD_DIR"
 { set +x; } 2>/dev/null
 end=$(date +%s)
 echo "DONE ($((end - start))s)"
 echo
 
-echo '****INSPECTING CIRCUIT FOR UNDERCONSTRAINTS (OPTIONAL, CAN FORCE EXIT)****'
-start=$(date +%s)
-set -x
-circom  -l ../node_modules "../$CIRCUIT_NAME".circom --inspect
-{ set +x; } 2>/dev/null
-end=$(date +%s)
-echo "DONE ($((end - start))s)"
-echo
+# echo '****INSPECTING CIRCUIT FOR UNDERCONSTRAINTS (OPTIONAL, CAN FORCE EXIT)****'
+# start=$(date +%s)
+# set -x
+# circom  -l ../node_modules "../$CIRCUIT_NAME".circom --inspect
+# { set +x; } 2>/dev/null
+# end=$(date +%s)
+# echo "DONE ($((end - start))s)"
+# echo

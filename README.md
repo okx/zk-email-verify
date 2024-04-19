@@ -19,7 +19,7 @@ Note that local proving only works on Chrome/Brave/Arc (or other Chromium-based 
 While it is an open source public goods project, we intend to be thorough and deploy our SDK as well as applications built atop it into production. This is an always-evolving work in progress, and we invite folks to contribute, or contact us for interesting projects that can be built on top of the tech! We are especially prioritizing optimizing circuits, making more production level demos, and improved SDK/CLI tooling.
 
 ### Credits
-This was originally conceived of in August 2022 by [@yush_g](https://twitter.com/yush_g) and [@sampriti0](https://twitter.com/sampriti0) at [@0xparc](https://twitter.com/0xparc), and has been improved since by several contributors supported by EF PSE including Sora, Saleel, Tyler, Sambhav, Javier, Rasul, Vivek, and more. We are grateful to circomlib, 0xparc, and double blind for their circuits. [DM us](http://t.me/zkemail) if interested in discussing usage, integrations, or building next generation primitives like this! 
+This was originally conceived of in August 2022 by [@yush_g](https://twitter.com/yush_g) and [@sampriti0](https://twitter.com/sampriti0) at [@0xparc](https://twitter.com/0xparc), and has been improved since by several contributors supported by EF PSE including Sora, Saleel, Tyler, Sambhav, Javier, Rasul, Vivek, and more. We are grateful to circomlib, 0xparc, and double blind for their circuits. [DM us](http://t.me/zkemail) if interested in discussing usage, integrations, or building next generation primitives like this!
 
 ### Local Twitter Demo
 
@@ -56,7 +56,7 @@ packages/
     regexes/ # Generated regexes
     helpers/ # Common helper circom circuits imported in email circuits
     test/ # Circom tests for circuit
-  
+
   contracts # Solidity contracts for Email verification
 
   helpers # Helper files for DKIM verification, input generation, etc.
@@ -154,7 +154,7 @@ Fill out the env via random characters into the values for entropy1 and entropy2
 
 Put the email into `emls` folder. Use the below command to generate the input.json for twitter
 
-`ts-node --project=tsconfig.json  packages/twitter-verifier-app/scripts/generate_input.ts --email_file=./emls/zktestemail_twitter.eml`
+`yarn ts-node --project=tsconfig.json packages/twitter-verifier-app/scripts/generate_input.ts --email_file=./emls/zkemail.eml`
 
 `input.json` will be written to `/packages/twitter-verifier-circuits/inputs/input.json` which can be used for witness generation and proving.
 

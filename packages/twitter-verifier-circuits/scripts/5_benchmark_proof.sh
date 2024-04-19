@@ -2,7 +2,7 @@
 # set -e
 source circuit.env
 
-SAMPLE_SIZE=1
+SAMPLE_SIZE=10
 PROVER_NUM=32
 TIME=(/usr/bin/time -f "mem %M\ntime %e\ncpu %P")
 NODE=/home/okxdex/.nvm/versions/node/v21.6.2/bin/node
@@ -51,6 +51,7 @@ function GPURapidStandalone() {
 }
 
 function RapidServer() {
+  echo "Prover Number =" $PROVER_NUM
   pushd "$BUILD_DIR" >/dev/null
   mkdir -p build
 
@@ -61,7 +62,7 @@ function RapidServer() {
 
   # Copy witness and input
   cp witness.wtns ./build/"$CIRCUIT_NAME".wtns
-  cp input.json ./build/input_"$CIRCUIT_NAME".json
+  cp ../../inputs/input.json ./build/input_"$CIRCUIT_NAME".json
 
   # Start many prover servers in the background
   prover_pids=()
@@ -129,7 +130,6 @@ function RapidServer() {
 }
 
 echo "Sample Size =" $SAMPLE_SIZE
-echo "Prover Number =" $PROVER_NUM
 # echo "========== GPU RapidSnark standalone prove  =========="
 # GPURapidStandalone
 

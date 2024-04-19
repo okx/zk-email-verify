@@ -28,15 +28,17 @@ template TwitterVerifier(max_header_bytes, max_body_bytes, n, k, pack_size, expo
 
     signal output pubkey_hash;
 
-    component EV = EmailVerifier(max_header_bytes, max_body_bytes, n, k, 0);
+    // last param = 1, ignore_body_hash_check
+    component EV = EmailVerifier(max_header_bytes, max_body_bytes, n, k, 1);
     EV.in_padded <== in_padded;
     EV.pubkey <== pubkey;
     EV.signature <== signature;
     EV.in_len_padded_bytes <== in_len_padded_bytes;
-    EV.body_hash_idx <== body_hash_idx;
-    EV.precomputed_sha <== precomputed_sha;
-    EV.in_body_padded <== in_body_padded;
-    EV.in_body_len_padded_bytes <== in_body_len_padded_bytes;
+    // ignore body hash check
+    // EV.body_hash_idx <== body_hash_idx;
+    // EV.precomputed_sha <== precomputed_sha;
+    // EV.in_body_padded <== in_body_padded;
+    // EV.in_body_len_padded_bytes <== in_body_len_padded_bytes;
 
     pubkey_hash <== EV.pubkey_hash;
 
@@ -57,13 +59,13 @@ template TwitterVerifier(max_header_bytes, max_body_bytes, n, k, pack_size, expo
         reveal_email_from_packed <== ShiftAndPackMaskedStr(max_header_bytes, max_email_from_len, pack_size)(from_regex_reveal, email_from_idx);
     }
 
-
     // Body reveal vars
-    var max_twitter_len = 21;
-    var max_twitter_packed_bytes = count_packed(max_twitter_len, pack_size); // ceil(max_num_bytes / 7)
     signal input twitter_username_idx;
-    signal output reveal_twitter_packed[max_twitter_packed_bytes];
+    // var max_twitter_len = 21;
+    // var max_twitter_packed_bytes = count_packed(max_twitter_len, pack_size); // ceil(max_num_bytes / 7)
+    // signal output reveal_twitter_packed[max_twitter_packed_bytes];
 
+    /* Body regex
     // TWITTER REGEX: 328,044 constraints
     // This computes the regex states on each character in the email body. For new emails, this is the
     // section that you want to swap out via using the zk-regex library.
@@ -74,9 +76,12 @@ template TwitterVerifier(max_header_bytes, max_body_bytes, n, k, pack_size, expo
 
     // PACKING: 16,800 constraints (Total: 3,115,057)
     reveal_twitter_packed <== ShiftAndPackMaskedStr(max_body_bytes, max_twitter_len, pack_size)(twitter_regex_reveal, twitter_username_idx);
+    */
 }
 
-// In circom, all output signals of the main component are public (and cannot be made private), the input signals of the main component are private if not stated otherwise using the keyword public as above. The rest of signals are all private and cannot be made public.
+// In circom, all output signals of the main component are public (and cannot be made private),
+// the input signals of the main component are private if not stated otherwise using the keyword public as above.
+// The rest of signals are all private and cannot be made public.
 // This makes pubkey_hash and reveal_twitter_packed public. hash(signature) can optionally be made public, but is not recommended since it allows the mailserver to trace who the offender is.
 
 // Args:
